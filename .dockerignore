@@ -1,0 +1,27 @@
+# Version control and editor metadata
+.git
+.gitignore
+.vscode
+.idea
+
+# Local/runtime state and host binaries
+logs/
+chaos_rules.json
+proxy.exe
+*.exe
+*.test
+*.out
+coverage/
+
+# Local configuration contains machine-specific backend addresses and paths.
+# The container ships config.docker.json instead.
+config.json
+
+# Documentation and development-only files
+README.md
+changelog.md
+verify_*.py
+
+# OS files
+.DS_Store
+Thumbs.db
