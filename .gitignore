@@ -1,0 +1,6 @@
+.idea/
+logs/
+*.exe
+db-proxy
+chaos_rules.json
+

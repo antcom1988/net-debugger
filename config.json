@@ -1,0 +1,45 @@
+{
+  "retention_days": 7,
+  "log_dir": "D:\\Works\\Personal\\Net Debugger\\Code\\DaPoeR-Project\\logs",
+  "services": {
+    "iso": {
+      "type": "iso8583",
+      "listen_port": 8990,
+      "backend_addr": "127.0.0.1:8989",
+      "label_color": "#63f83a",
+      "enabled": true
+    },
+    "mariadb": {
+      "type": "mariadb",
+      "listen_port": 13306,
+      "backend_addr": "localhost:3306",
+      "label_color": "#f0f40b",
+      "enabled": true
+    },
+    "postgres": {
+      "type": "postgres",
+      "listen_port": 15432,
+      "backend_addr": "localhost:5432",
+      "label_color": "#3a5af8",
+      "enabled": true
+    },
+    "redis": {
+      "type": "redis",
+      "listen_port": 16379,
+      "backend_addr": "localhost:6379",
+      "label_color": "#dd0e0e",
+      "enabled": true
+    },
+    "simulator": {
+      "type": "api",
+      "listen_port": 18088,
+      "backend_addr": "127.0.0.1:18089",
+      "label_color": "#f83acf",
+      "enabled": true
+    }
+  },
+  "web": {
+    "port": 9999,
+    "enabled": true
+  }
+}
