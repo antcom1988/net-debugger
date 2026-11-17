@@ -12,24 +12,31 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath -ldflags='-s -w' -o /out/net-debugger ./cmd/proxy
+    go build -trimpath -ldflags='-s -w' -o /out/net-debugger ./cmd/proxy && \
+    mkdir -p /out/logs
 
-# Distroless provides a minimal non-root runtime without a shell or package
-# manager. ISO packager XML remains external to the executable because the
-# parser intentionally loads it at startup.
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+# Alpine retains a minimal runtime while providing /bin/sh, so operators can
+# inspect the container with kubectl exec when troubleshooting.
+FROM alpine:3.21 AS runtime
+RUN apk add --no-cache ca-certificates && \
+    addgroup -S netdebugger && \
+    adduser -S -G netdebugger netdebugger && \
+    mkdir -p /app/config /app/logs && \
+    chown -R netdebugger:netdebugger /app
 WORKDIR /app/config
 
-COPY --from=build --chown=nonroot:nonroot /out/net-debugger /app/net-debugger
-COPY --chown=nonroot:nonroot packager /app/packager
-COPY --chown=nonroot:nonroot config.docker.json /app/config/config.json
+COPY --from=build --chown=netdebugger:netdebugger /out/net-debugger /app/net-debugger
+COPY --chown=netdebugger:netdebugger packager /app/packager
+COPY --chown=netdebugger:netdebugger config.docker.json /app/config/config.json
+COPY --from=build --chown=netdebugger:netdebugger /out/logs /app/logs
 
-# Runtime-writable state: config changes from the dashboard, chaos rules, and logs.
-VOLUME ["/app/config", "/app/logs"]
+# Runtime-writable state: configuration changes from the dashboard and chaos rules.
+VOLUME ["/app/config"]
 
-# Defaults from config.docker.json. Publish only the ports enabled in your
-# deployed configuration; EXPOSE documents the standard bundled defaults.
-EXPOSE 9999 15432 16379 13306 8990 18088
+# The dashboard listens on 9999. Proxy connections may be added dynamically
+# through the dashboard, so reserve the supported listener range as well.
+# EXPOSE is documentation only; publish it with -p 9999:9999 -p 10000-30000:10000-30000.
+EXPOSE 9999 10000-30000
 
-USER nonroot:nonroot
+USER netdebugger:netdebugger
 ENTRYPOINT ["/app/net-debugger"]

@@ -145,19 +145,14 @@ Untuk keamanan, nilai mentah DE2, DE35, DE36, DE45, DE52, DE53, dan DE102–DE12
 
 ## Docker
 
-Image menggunakan multi-stage build: Go Alpine hanya dipakai saat kompilasi, sedangkan runtime memakai **distroless static Debian non-root**. Binary dibuat statis dan di-strip (`-s -w`), sehingga image runtime tidak membawa Go toolchain, shell, atau package manager.
+Image menggunakan multi-stage build: Go Alpine hanya dipakai saat kompilasi, sedangkan runtime memakai **Alpine non-root**. Binary dibuat statis dan di-strip (`-s -w`); Alpine menyediakan `/bin/sh` sehingga container dapat diperiksa dengan `kubectl exec` saat troubleshooting.
 
 ```bash
 docker build -t net-debugger:local .
 docker run --rm --name net-debugger \
   -p 9999:9999 \
-  -p 15432:15432 \
-  -p 16379:16379 \
-  -p 13306:13306 \
-  -p 8990:8990 \
-  -p 18088:18088 \
+  -p 10000-30000:10000-30000 \
   -v net-debugger-config:/app/config \
-  -v net-debugger-logs:/app/logs \
   net-debugger:local
 ```
 
@@ -167,13 +162,12 @@ Image menyertakan `config.docker.json` sebagai `/app/config/config.json`; seluru
 docker run --rm \
   -p 9999:9999 \
   -v "$(pwd)/my-config.json:/app/config/config.json:ro" \
-  -v net-debugger-logs:/app/logs \
   net-debugger:local
 ```
 
 Pada Docker Desktop, gunakan `host.docker.internal:<port>` di `backend_addr` untuk mengakses service di host. Untuk service dalam Docker network yang sama, gunakan nama service Docker, misalnya `postgres:5432` atau `redis:6379`.
 
-`/app/config` menampung `config.json` dan `chaos_rules.json`, sedangkan `/app/logs` menampung log persisten. Keduanya dideklarasikan sebagai volume. Jika `config.json` di-mount read-only, jangan mengubah connection atau Chaos rules dari dashboard karena aplikasi perlu menulis state tersebut.
+`/app/config` menampung `config.json` dan `chaos_rules.json` dan dideklarasikan sebagai volume. `/app/logs` bersifat ephemeral di filesystem container; log akan hilang ketika container dibuat ulang. Jika `config.json` di-mount read-only, jangan mengubah connection atau Chaos rules dari dashboard karena aplikasi perlu menulis state tersebut.
 
 ## Validasi
 
