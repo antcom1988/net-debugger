@@ -5,9 +5,9 @@ import (
 	"db-proxy/internal/core/domain"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -38,14 +38,16 @@ func (ps *ProxyService) NewHTTPHandler(serviceName, backendAddr string) (http.Ha
 			if rule, matched := ps.chaosSvc.Evaluate(serviceName, requestLine); matched {
 				apiRule = &rule
 				if rule.Action == "delay" {
-					delay := apiDelayDuration(rule)
-					if delay > 0 {
-						chaosPrefix = fmt.Sprintf("[CHAOS_DELAY: %dms] ", delay.Milliseconds())
-						if strings.EqualFold(rule.DelayTarget, "response") {
-							responseDelay = delay
-						} else if !waitForHTTPDelay(r, delay) {
+					requestDelay := time.Duration(rule.DelayRequestMs) * time.Millisecond
+					responseDelay = time.Duration(rule.DelayResponseMs) * time.Millisecond
+					if requestDelay > 0 {
+						chaosPrefix = fmt.Sprintf("[CHAOS_DELAY_REQUEST: %dms] ", requestDelay.Milliseconds())
+						if !waitForHTTPDelay(r, requestDelay) {
 							return
 						}
+					}
+					if responseDelay > 0 && chaosPrefix == "" {
+						chaosPrefix = fmt.Sprintf("[CHAOS_DELAY_RESPONSE: %dms] ", responseDelay.Milliseconds())
 					}
 				}
 			}
@@ -58,7 +60,7 @@ func (ps *ProxyService) NewHTTPHandler(serviceName, backendAddr string) (http.Ha
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
 			_, _ = io.WriteString(w, apiRule.APIResponseBody)
-			ps.writeHTTPLog(serviceName, r, nil, fmt.Sprintf("HTTP %d Chaos Custom Response\n%s", status, sanitizeHTTPLog(apiRule.APIResponseBody)), started, "[CHAOS_API_RESPONSE] ")
+			ps.writeHTTPLog(serviceName, r, nil, fmt.Sprintf("HTTP %d Chaos Custom Response\n%s", status, cleanHTTPLog(apiRule.APIResponseBody)), started, "[CHAOS_API_RESPONSE] ")
 			return
 		}
 		if apiRule != nil && apiRule.Action == "api_drop" {
@@ -102,20 +104,12 @@ func (ps *ProxyService) NewHTTPHandler(serviceName, backendAddr string) (http.Ha
 		w.WriteHeader(resp.StatusCode)
 		responseCapture := &limitedCaptureWriter{limit: maxHTTPLogBodyBytes}
 		_, copyErr := io.Copy(w, io.TeeReader(body, responseCapture))
-		response := fmt.Sprintf("HTTP %d %s\n%s", resp.StatusCode, http.StatusText(resp.StatusCode), sanitizeHTTPLog(string(responseCapture.Bytes())))
+		response := fmt.Sprintf("HTTP %d %s\n%s", resp.StatusCode, http.StatusText(resp.StatusCode), cleanHTTPLog(string(responseCapture.Bytes())))
 		if copyErr != nil {
 			response += "\n[response copy error: " + copyErr.Error() + "]"
 		}
 		ps.writeHTTPLog(serviceName, r, requestCapture.Bytes(), response, started, chaosPrefix)
 	}), nil
-}
-
-func apiDelayDuration(rule domain.ChaosRule) time.Duration {
-	min, max := rule.DelayMinMs, rule.DelayMaxMs
-	if min > 0 && max >= min {
-		return time.Duration(min+rand.Intn(max-min+1)) * time.Millisecond
-	}
-	return time.Duration(rule.DelayMs) * time.Millisecond
 }
 
 type corruptHTTPReader struct {
@@ -150,8 +144,11 @@ func waitForHTTPDelay(r *http.Request, delay time.Duration) bool {
 
 func (ps *ProxyService) writeHTTPLog(serviceName string, r *http.Request, requestBody []byte, response string, started time.Time, chaosPrefix string) {
 	query := chaosPrefix + fmt.Sprintf("%s %s", r.Method, sanitizedRequestURI(r.URL))
-	if body := strings.TrimSpace(sanitizeHTTPLog(string(requestBody))); body != "" {
-		query += "\nBody: " + body
+	if headers := sanitizeHTTPHeaders(r.Header); headers != "" {
+		query += "\nHeader : " + headers
+	}
+	if body := strings.TrimSpace(cleanHTTPLog(string(requestBody))); body != "" {
+		query += "\nBody : " + body
 	}
 	entry := domain.LogEntry{Timestamp: started, ThirdParty: serviceName, ClientIP: r.RemoteAddr, Query: query, Response: response}
 	if err := ps.logger.LogQuery(entry); err != nil {
@@ -225,51 +222,32 @@ func isHopByHopHeader(key string) bool {
 	}
 	return false
 }
+
+// formatHTTPHeaders produces a stable single-line representation suitable for
+// file and dashboard logs. Header values are intentionally preserved verbatim
+// (except CR/NUL control characters) for API debugging.
+func sanitizeHTTPHeaders(headers http.Header) string {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		values := headers.Values(key)
+		formatted := make([]string, 0, len(values))
+		for _, value := range values {
+			formatted = append(formatted, cleanHTTPLog(value))
+		}
+		parts = append(parts, http.CanonicalHeaderKey(key)+": "+strings.Join(formatted, ", "))
+	}
+	return strings.Join(parts, "; ")
+}
+
 func sanitizedRequestURI(u *url.URL) string {
-	values := u.Query()
-	for key := range values {
-		lower := strings.ToLower(key)
-		if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "password") || strings.Contains(lower, "key") {
-			values.Set(key, "[REDACTED]")
-		}
-	}
-	path := u.EscapedPath()
-	if path == "" {
-		path = "/"
-	}
-	if encoded := values.Encode(); encoded != "" {
-		return path + "?" + encoded
-	}
-	return path
+	return u.RequestURI()
 }
-func sanitizeHTTPLog(value string) string {
-	value = strings.NewReplacer("\r", "", "\x00", "").Replace(value)
-	for _, key := range []string{"password", "token", "secret", "api_key", "apikey", "authorization"} {
-		value = redactKeyValue(value, key)
-	}
-	return value
-}
-func redactKeyValue(value, key string) string {
-	needle, lower := strings.ToLower(key), strings.ToLower(value)
-	for offset := 0; ; {
-		i := strings.Index(lower[offset:], needle)
-		if i < 0 {
-			return value
-		}
-		cursor := offset + i + len(needle)
-		for cursor < len(value) && (value[cursor] == 32 || value[cursor] == 9 || value[cursor] == 34 || value[cursor] == 58) {
-			cursor++
-		}
-		end := cursor
-		for end < len(value) && value[end] != 34 && value[end] != 38 && value[end] != 44 && value[end] != 10 && value[end] != 125 {
-			end++
-		}
-		if cursor < end {
-			value = value[:cursor] + "[REDACTED]" + value[end:]
-			lower = strings.ToLower(value)
-			offset = cursor + len("[REDACTED]")
-		} else {
-			offset = cursor
-		}
-	}
+func cleanHTTPLog(value string) string {
+	return strings.NewReplacer("\r", "", "\x00", "").Replace(value)
 }

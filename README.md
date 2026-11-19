@@ -13,7 +13,7 @@ Net Debugger adalah proxy observability dan fault-injection berbasis Go untuk **
 - Log file persisten; refresh dashboard tidak menghapus log.
 - Dynamic connection dan warna label yang konsisten pada kartu/filter/badge.
 - Chaos rules yang disimpan pada `chaos_rules.json`.
-- Redaksi data sensitif HTTP dan ISO 8583.
+- Log request/response API dan field ISO 8583 ditampilkan lengkap untuk kebutuhan debugging.
 
 ## Requirements
 
@@ -84,7 +84,7 @@ Nama connection adalah identitas untuk log, filter, warna label, dan Chaos Contr
 
 ### API security
 
-Client API tidak dapat menentukan upstream; upstream berasal dari `backend_addr` connection. Hanya HTTP/HTTPS yang diizinkan dan URL bercredential ditolak. Header/nilai `Authorization`, cookie, token, password, secret, dan `api_key` direduksi dalam log. Capture body HTTP dibatasi 64 KiB.
+Client API tidak dapat menentukan upstream; upstream berasal dari `backend_addr` connection. Hanya HTTP/HTTPS yang diizinkan dan URL bercredential ditolak. Log request API menyimpan URL, semua header, body, serta response body hingga batas capture 64 KiB. Karena log dapat berisi credential atau data transaksi, batasi akses ke dashboard dan direktori log.
 
 ## Query Logs
 
@@ -99,9 +99,7 @@ Pilih **Connection** terlebih dahulu. Action di dropdown otomatis berubah sesuai
 
 | Connection type | Action yang tersedia |
 |---|---|
-| PostgreSQL, MariaDB, Redis | Inject Delay; Return Error Response; Drop Connection; Return Empty Result Set; Throttle Response Speed |
-| Socket ISO 8583 | Inject Delay; Drop Connection |
-| API HTTP/HTTPS | Delay Request/Response; Custom HTTP Response; Drop Request; Corrupt Response Body; Override Response Header |
+| PostgreSQL, MariaDB, Redis, Socket ISO 8583, API HTTP/HTTPS | **Delay** (Delay Request dan Delay Response); serta action lain yang kompatibel dengan masing-masing connection type |
 
 ### Batasan ISO 8583
 
@@ -109,7 +107,7 @@ ISO 8583 tidak menawarkan generic error packet atau empty result yang aman tanpa
 
 ### Action API
 
-- **Delay Request / Response**: delay dapat diterapkan sebelum forward request atau sebelum respons dikirim; mendukung rentang random delay.
+- **Delay**: tersedia di semua Connection Type. Isi **Delay Request (milliseconds)** untuk menahan request sebelum diteruskan ke backend dan/atau **Delay Response (milliseconds)** untuk menahan respons backend sebelum diteruskan ke client. Kedua nilai dapat digunakan bersamaan; tidak ada random delay.
 - **Custom HTTP Response**: mengembalikan status/body yang diatur tanpa menghubungi upstream.
 - **Drop Request**: menghentikan request sebelum upstream.
 - **Corrupt Response Body**: memodifikasi body respons upstream untuk resilience test.
@@ -131,7 +129,7 @@ Karakteristik:
 - buffering untuk frame TCP terfragmentasi;
 - request dicatat saat frame lengkap diterima, tanpa menunggu socket persistent ditutup.
 
-Untuk keamanan, nilai mentah DE2, DE35, DE36, DE45, DE52, DE53, dan DE102–DE128 tidak diekspos dalam log.
+Semua field yang berhasil diparse, termasuk DE2, DE35, DE36, DE45, DE52, DE53, dan DE102–DE128, dicatat dengan nilai aslinya untuk debugging transaksi. Lindungi akses ke Query Logs dan folder log karena data tersebut dapat bersifat sensitif.
 
 ## API Dashboard
 

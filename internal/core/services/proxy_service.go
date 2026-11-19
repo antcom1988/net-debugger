@@ -51,6 +51,7 @@ func (ps *ProxyService) HandleConnection(ctx context.Context, clientConn net.Con
 		activeDisruption string // "none", "empty", "throttle"
 		throttleBytes    int
 		throttleInterval time.Duration
+		responseDelay    time.Duration
 	}
 	connState.activeDisruption = "none"
 
@@ -78,7 +79,13 @@ func (ps *ProxyService) HandleConnection(ctx context.Context, clientConn net.Con
 				disruption := connState.activeDisruption
 				tBytes := connState.throttleBytes
 				tInterval := connState.throttleInterval
+				responseDelay := connState.responseDelay
 				connState.mu.Unlock()
+
+				if responseDelay > 0 {
+					ps.sysLog.Warn("[%s] Injecting response delay of %dms for %s", connectionName, responseDelay.Milliseconds(), clientIP)
+					time.Sleep(responseDelay)
+				}
 
 				var bytesToLog []byte
 				if disruption == "empty" {
@@ -170,7 +177,8 @@ func (ps *ProxyService) HandleConnection(ctx context.Context, clientConn net.Con
 				// Parse and log queries, applying chaos rules dynamically
 				queries := parser.Parse(payload)
 
-				var matchedDelay time.Duration
+				var matchedRequestDelay time.Duration
+				var matchedResponseDelay time.Duration
 				var matchedError string
 				var shouldClose bool
 
@@ -183,7 +191,9 @@ func (ps *ProxyService) HandleConnection(ctx context.Context, clientConn net.Con
 						if action == "error" {
 							loggedQuery = fmt.Sprintf("[CHAOS_ERROR: %s] %s", rule.ErrorMsg, q)
 						} else if action == "delay" {
-							loggedQuery = fmt.Sprintf("[CHAOS_DELAY: %dms] %s", rule.DelayMs, q)
+							matchedRequestDelay = time.Duration(rule.DelayRequestMs) * time.Millisecond
+							matchedResponseDelay = time.Duration(rule.DelayResponseMs) * time.Millisecond
+							loggedQuery = fmt.Sprintf("[CHAOS_DELAY: request=%dms response=%dms] %s", rule.DelayRequestMs, rule.DelayResponseMs, q)
 						} else if action == "close" {
 							loggedQuery = fmt.Sprintf("[CHAOS_CLOSE] %s", q)
 						} else if action == "empty" {
@@ -245,8 +255,12 @@ func (ps *ProxyService) HandleConnection(ctx context.Context, clientConn net.Con
 							}
 							break
 						} else if action == "delay" {
-							ps.sysLog.Warn("[%s] Injecting delay of %dms for query on %s", connectionName, rule.DelayMs, clientIP)
-							matchedDelay = time.Duration(rule.DelayMs) * time.Millisecond
+							if matchedRequestDelay > 0 {
+								ps.sysLog.Warn("[%s] Injecting request delay of %dms for query on %s", connectionName, matchedRequestDelay.Milliseconds(), clientIP)
+							}
+							connState.mu.Lock()
+							connState.responseDelay = matchedResponseDelay
+							connState.mu.Unlock()
 						} else if action == "close" {
 							ps.sysLog.Warn("[%s] Abruptly dropping connection for query on %s", connectionName, clientIP)
 							shouldClose = true
@@ -274,6 +288,7 @@ func (ps *ProxyService) HandleConnection(ctx context.Context, clientConn net.Con
 					} else {
 						connState.mu.Lock()
 						connState.activeDisruption = "none"
+						connState.responseDelay = 0
 						connState.mu.Unlock()
 					}
 				}
@@ -288,8 +303,8 @@ func (ps *ProxyService) HandleConnection(ctx context.Context, clientConn net.Con
 					continue // Skip sending payload to backend database
 				}
 
-				if matchedDelay > 0 {
-					time.Sleep(matchedDelay)
+				if matchedRequestDelay > 0 {
+					time.Sleep(matchedRequestDelay)
 				}
 
 				// Forward raw bytes to the actual database

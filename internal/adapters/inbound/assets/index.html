@@ -811,7 +811,8 @@
             <div class="chaos-grid">
                 <!-- Add Rule Form -->
                 <div class="chaos-form-card">
-                    <h2>Add Intercept Rule</h2>
+                    <h2 id="chaos-rule-form-title">Add Intercept Rule</h2>
+                    <input type="hidden" id="rule-edit-index" value="">
                     <div class="form-group">
                         <label for="rule-service">Connection</label>
                         <select id="rule-service" class="form-control" onchange="syncChaosActionOptions()">
@@ -821,7 +822,7 @@
                     <div class="form-group">
                         <label for="rule-match">Match Type</label>
                         <select id="rule-match" class="form-control">
-                            <option value="substring">Substring</option>
+                            <option value="substring" selected>Substring</option>
                             <option value="regex">Regex</option>
                             <option value="exact">Exact Match</option>
                         </select>
@@ -844,16 +845,11 @@
                             <option value="api_header">API: Override Response Header</option>
                         </select>
                     </div>
-                    <div class="form-group" id="group-delay">
-                        <label for="rule-delay">Delay (Milliseconds)</label>
-                        <input type="number" id="rule-delay" class="form-control" value="2000" min="0">
-                    </div>
-                    <div class="form-group" id="group-delay-target" style="display: none;">
-                        <label for="rule-delay-target">Delay Target</label>
-                        <select id="rule-delay-target" class="form-control">
-                            <option value="request">Delay Request</option>
-                            <option value="response">Delay Response</option>
-                        </select>
+                    <div class="form-group" id="group-delay" style="display: none;">
+                        <label for="rule-delay-request">Delay Request (milliseconds)</label>
+                        <input type="number" id="rule-delay-request" class="form-control" value="0" min="0">
+                        <label for="rule-delay-response" style="margin-top: 6px;">Delay Response (milliseconds)</label>
+                        <input type="number" id="rule-delay-response" class="form-control" value="0" min="0">
                     </div>
                     <div class="form-group" id="group-error" style="display: none;">
                         <label for="rule-error">Error Message</label>
@@ -875,15 +871,12 @@
                         <input type="text" id="rule-api-header-name" class="form-control" placeholder="Retry-After">
                         <input type="text" id="rule-api-header-value" class="form-control" placeholder="30" style="margin-top: 6px;">
                     </div>
-                    <div class="form-group" id="group-api-random-delay" style="display: none;">
-                        <label>Random Delay Range (ms)</label>
-                        <input type="number" id="rule-delay-min" class="form-control" value="500" min="0">
-                        <input type="number" id="rule-delay-max" class="form-control" value="3000" min="0" style="margin-top: 6px;">
-                    </div>
                     <div class="form-group">
+                        <label for="rule-probability">Probability</label>
                         <input type="number" id="rule-probability" class="form-control" value="1.0" min="0.0" max="1.0" step="0.1">
                     </div>
-                    <button class="btn-primary" onclick="addChaosRule()">Create Rule</button>
+                    <button id="chaos-rule-submit" class="btn-primary" onclick="addChaosRule()">Create Rule</button>
+                    <button id="chaos-rule-cancel" class="btn-danger" type="button" onclick="resetChaosRuleForm()" style="display: none; margin-top: 8px;">Cancel Edit</button>
                 </div>
 
                 <!-- Rules List -->
@@ -953,6 +946,7 @@
                         </label>
                     </div>
                     <button class="btn-primary" onclick="saveConnection()">Save Connection</button>
+                    <button id="connection-edit-cancel" class="btn-danger" type="button" onclick="resetConnectionForm()" style="display: none; margin-top: 8px;">Cancel Edit</button>
                 </div>
 
                 <!-- Connections List -->
@@ -1346,25 +1340,25 @@
 
         const chaosActionsByConnectionType = {
             postgres: [
-                ['delay', 'Inject Delay'], ['error', 'Return Error Response'],
+                ['delay', 'Delay'], ['error', 'Return Error Response'],
                 ['close', 'Drop Connection (Abrupt Close)'], ['empty', 'Return Empty Result Set'],
                 ['throttle', 'Throttle Response Speed']
             ],
             mariadb: [
-                ['delay', 'Inject Delay'], ['error', 'Return Error Response'],
+                ['delay', 'Delay'], ['error', 'Return Error Response'],
                 ['close', 'Drop Connection (Abrupt Close)'], ['empty', 'Return Empty Result Set'],
                 ['throttle', 'Throttle Response Speed']
             ],
             redis: [
-                ['delay', 'Inject Delay'], ['error', 'Return Error Response'],
+                ['delay', 'Delay'], ['error', 'Return Error Response'],
                 ['close', 'Drop Connection (Abrupt Close)'], ['empty', 'Return Empty Result Set'],
                 ['throttle', 'Throttle Response Speed']
             ],
             iso8583: [
-                ['delay', 'Inject Delay'], ['close', 'Drop Connection (Abrupt Close)']
+                ['delay', 'Delay'], ['close', 'Drop Connection (Abrupt Close)']
             ],
             api: [
-                ['delay', 'Delay Request / Response'], ['api_response', 'Custom HTTP Response'],
+                ['delay', 'Delay'], ['api_response', 'Custom HTTP Response'],
                 ['api_drop', 'Drop Request'], ['api_corrupt', 'Corrupt Response Body'],
                 ['api_header', 'Override Response Header']
             ]
@@ -1397,14 +1391,10 @@
             const connection = connectionProxies[connectionName];
             const isAPIConnection = connection && connection.type === 'api';
             document.getElementById('group-delay').style.display = 'none';
-            ['group-delay-target', 'group-error', 'group-throttle', 'group-api-response', 'group-api-header', 'group-api-random-delay'].forEach(id => document.getElementById(id).style.display = 'none');
+            ['group-error', 'group-throttle', 'group-api-response', 'group-api-header'].forEach(id => document.getElementById(id).style.display = 'none');
 
             if (action === 'delay') {
                 document.getElementById('group-delay').style.display = 'flex';
-                if (isAPIConnection) {
-                    document.getElementById('group-delay-target').style.display = 'flex';
-                    document.getElementById('group-api-random-delay').style.display = 'flex';
-                }
             } else if (action === 'error') {
                 document.getElementById('group-error').style.display = 'flex';
             } else if (action === 'throttle') {
@@ -1463,7 +1453,7 @@
 
                 let actionLabel = '';
                 if (rule.action === 'delay') {
-                    actionLabel = `<span class="rule-badge rule-action-delay">Delay</span> <span style="font-family: monospace; color:#ffb03a;">${rule.delay_ms}ms</span>`;
+                    actionLabel = `<span class="rule-badge rule-action-delay">Delay</span> <span style="font-family: monospace; color:#ffb03a;">request ${rule.delay_request_ms || 0}ms / response ${rule.delay_response_ms || 0}ms</span>`;
                 } else if (rule.action === 'error') {
                     actionLabel = `<span class="rule-badge rule-action-error">Error</span> <span style="color: var(--accent-red); font-size:13px; font-family: monospace;">"${escapeHtml(rule.error_msg)}"</span>`;
                 } else if (rule.action === 'close') {
@@ -1492,11 +1482,49 @@
                     <td style="font-family: monospace;">${(rule.probability * 100).toFixed(0)}%</td>
                     <td>${statusToggle}</td>
                     <td>
-                        <button class="btn-danger" onclick="deleteRule(${idx})">Delete</button>
+                        <button class="btn-danger" type="button" onclick="editRule(${idx})" style="background: rgba(56, 189, 248, 0.1); color: var(--accent-blue); border-color: rgba(56, 189, 248, 0.3); margin-right: 6px;">Edit</button>
+                        <button class="btn-danger" type="button" onclick="deleteRule(${idx})">Delete</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        function resetChaosRuleForm() {
+            document.getElementById('rule-edit-index').value = '';
+            document.getElementById('chaos-rule-form-title').textContent = 'Add Intercept Rule';
+            document.getElementById('chaos-rule-submit').textContent = 'Create Rule';
+            document.getElementById('chaos-rule-cancel').style.display = 'none';
+            document.getElementById('rule-match').value = 'substring';
+            document.getElementById('rule-pattern').value = '';
+            document.getElementById('rule-delay-request').value = 0;
+            document.getElementById('rule-delay-response').value = 0;
+            document.getElementById('rule-probability').value = 1;
+            syncChaosActionOptions('delay');
+        }
+
+        function editRule(idx) {
+            const rule = chaosRules[idx];
+            if (!rule) return;
+            document.getElementById('rule-edit-index').value = idx;
+            document.getElementById('chaos-rule-form-title').textContent = 'Edit Intercept Rule';
+            document.getElementById('chaos-rule-submit').textContent = 'Update Rule';
+            document.getElementById('chaos-rule-cancel').style.display = 'inline-block';
+            document.getElementById('rule-service').value = rule.service;
+            document.getElementById('rule-match').value = rule.match_type || 'substring';
+            document.getElementById('rule-pattern').value = rule.pattern || '';
+            document.getElementById('rule-delay-request').value = rule.delay_request_ms || 0;
+            document.getElementById('rule-delay-response').value = rule.delay_response_ms || 0;
+            document.getElementById('rule-error').value = rule.error_msg || '';
+            document.getElementById('rule-throttle-bytes').value = rule.throttle_bytes || 10;
+            document.getElementById('rule-throttle-interval').value = rule.throttle_interval_ms || 100;
+            document.getElementById('rule-api-status').value = rule.api_status_code || 503;
+            document.getElementById('rule-api-body').value = rule.api_response_body || '';
+            document.getElementById('rule-api-header-name').value = rule.api_header_name || '';
+            document.getElementById('rule-api-header-value').value = rule.api_header_value || '';
+            document.getElementById('rule-probability').value = Number.isFinite(rule.probability) ? rule.probability : 1;
+            syncChaosActionOptions(rule.action || 'delay');
+            document.getElementById('chaos-rule-form-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         async function addChaosRule() {
@@ -1504,10 +1532,8 @@
             const matchType = document.getElementById('rule-match').value;
             const pattern = document.getElementById('rule-pattern').value.trim();
             const action = document.getElementById('rule-action').value;
-            const delayMs = parseInt(document.getElementById('rule-delay').value) || 0;
-            const delayTarget = document.getElementById('rule-delay-target').value;
-            const delayMinMs = parseInt(document.getElementById('rule-delay-min').value) || 0;
-            const delayMaxMs = parseInt(document.getElementById('rule-delay-max').value) || 0;
+            const delayRequestMs = parseInt(document.getElementById('rule-delay-request').value) || 0;
+            const delayResponseMs = parseInt(document.getElementById('rule-delay-response').value) || 0;
             const apiStatusCode = parseInt(document.getElementById('rule-api-status').value) || 503;
             const apiResponseBody = document.getElementById('rule-api-body').value;
             const apiHeaderName = document.getElementById('rule-api-header-name').value.trim();
@@ -1515,23 +1541,24 @@
             const errorMsg = document.getElementById('rule-error').value.trim();
             const throttleBytes = parseInt(document.getElementById('rule-throttle-bytes').value) || 10;
             const throttleInterval = parseInt(document.getElementById('rule-throttle-interval').value) || 100;
-            const probability = parseFloat(document.getElementById('rule-probability').value) || 1.0;
+            const probabilityInput = parseFloat(document.getElementById('rule-probability').value);
+            const probability = Number.isFinite(probabilityInput) ? probabilityInput : 1.0;
+            const editIndex = document.getElementById('rule-edit-index').value;
 
             if (!pattern) {
                 alert("Please enter a query pattern.");
                 return;
             }
 
+            const existingRule = editIndex === '' ? null : chaosRules[Number(editIndex)];
             const newRule = {
-                id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5),
+                id: existingRule ? existingRule.id : Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5),
                 service: service,
                 match_type: matchType,
                 pattern: pattern,
                 action: action,
-                delay_ms: delayMs,
-                delay_target: delayTarget,
-                delay_min_ms: delayMinMs,
-                delay_max_ms: delayMaxMs,
+                delay_request_ms: delayRequestMs,
+                delay_response_ms: delayResponseMs,
                 api_status_code: apiStatusCode,
                 api_response_body: apiResponseBody,
                 api_header_name: apiHeaderName,
@@ -1540,15 +1567,17 @@
                 throttle_bytes: throttleBytes,
                 throttle_interval_ms: throttleInterval,
                 probability: probability,
-                enabled: true
+                enabled: existingRule ? existingRule.enabled : true
             };
 
-            chaosRules.push(newRule);
+            if (existingRule) {
+                chaosRules[Number(editIndex)] = newRule;
+            } else {
+                chaosRules.push(newRule);
+            }
             await saveChaosRules();
             renderChaosRules();
-
-            // Reset pattern input
-            document.getElementById('rule-pattern').value = '';
+            resetChaosRuleForm();
         }
 
         async function toggleRule(idx) {
@@ -1705,6 +1734,19 @@
             });
         }
 
+        function resetConnectionForm() {
+            const nameInput = document.getElementById('conn-name');
+            nameInput.value = '';
+            nameInput.disabled = false;
+            document.getElementById('conn-type').value = 'redis';
+            document.getElementById('conn-port').value = '';
+            document.getElementById('conn-backend').value = '';
+            document.getElementById('conn-color').value = defaultLabelColor;
+            document.getElementById('conn-enabled').checked = true;
+            document.getElementById('conn-is-edit').value = 'false';
+            document.getElementById('connection-edit-cancel').style.display = 'none';
+        }
+
         async function saveConnection() {
             const nameInput = document.getElementById('conn-name');
             const type = document.getElementById('conn-type').value;
@@ -1745,14 +1787,7 @@
                 });
                 
                 if (res.ok) {
-                    nameInput.value = '';
-                    nameInput.disabled = false;
-                    document.getElementById('conn-port').value = '';
-                    document.getElementById('conn-backend').value = '';
-                    document.getElementById('conn-color').value = defaultLabelColor;
-                    document.getElementById('conn-is-edit').value = 'false';
-                    document.getElementById('conn-enabled').checked = true;
-
+                    resetConnectionForm();
                     await fetchConnections();
                 } else {
                     const err = await res.json();
@@ -1778,6 +1813,7 @@
             document.getElementById('conn-color').value = /^#[0-9a-fA-F]{6}$/.test(conn.label_color || '') ? conn.label_color : defaultLabelColor;
             document.getElementById('conn-enabled').checked = conn.enabled;
             document.getElementById('conn-is-edit').value = 'true';
+            document.getElementById('connection-edit-cancel').style.display = 'inline-block';
 
             const formCard = nameInput.closest('.chaos-form-card');
             formCard.style.outline = '2px solid var(--accent-blue)';

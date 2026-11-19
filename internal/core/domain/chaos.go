@@ -7,10 +7,8 @@ type ChaosRule struct {
 	MatchType          string  `json:"match_type"`           // "substring", "regex", "exact"
 	Pattern            string  `json:"pattern"`              // Target query/table/command pattern
 	Action             string  `json:"action"`               // "delay", "error", "close", "empty", "throttle"
-	DelayMs            int     `json:"delay_ms"`             // Used if Action = "delay"
-	DelayTarget        string  `json:"delay_target"`         // API delay target: "request" (default) or "response"
-	DelayMinMs         int     `json:"delay_min_ms"`         // API random delay lower bound in ms
-	DelayMaxMs         int     `json:"delay_max_ms"`         // API random delay upper bound in ms
+	DelayRequestMs     int     `json:"delay_request_ms"`     // Delay before forwarding a request to the backend
+	DelayResponseMs    int     `json:"delay_response_ms"`    // Delay before forwarding a backend response to the client
 	APIStatusCode      int     `json:"api_status_code"`      // API custom response status
 	APIResponseBody    string  `json:"api_response_body"`    // API custom response body
 	APIHeaderName      string  `json:"api_header_name"`      // API response header name

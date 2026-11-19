@@ -93,6 +93,28 @@ func TestChaosActionCompatibility(t *testing.T) {
 	}
 }
 
+func TestChaosDashboardSupportsRuleEditingAndLabelsProbability(t *testing.T) {
+	content, err := staticAssets.ReadFile("assets/index.html")
+	if err != nil {
+		t.Fatalf("read dashboard asset: %v", err)
+	}
+	body := string(content)
+	for _, expected := range []string{
+		"id=\"rule-edit-index\"",
+		"function editRule(idx)",
+		"onclick=\"editRule(${idx})\"",
+		"<label for=\"rule-probability\">Probability</label>",
+		"<option value=\"substring\" selected>Substring</option>",
+		"class=\"btn-danger\" type=\"button\" onclick=\"editRule(${idx})\" style=\"background: rgba(56, 189, 248, 0.1); color: var(--accent-blue); border-color: rgba(56, 189, 248, 0.3); margin-right: 6px;\"",
+		"id=\"connection-edit-cancel\"",
+		"function resetConnectionForm()",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("dashboard is missing %q", expected)
+		}
+	}
+}
+
 func TestHandleClearLogsRejectsMethodSelainPost(t *testing.T) {
 	ws := NewWebServer(domain.AppConfig{LogDir: t.TempDir()}, nil, dummyLogger{}, nil, nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/logs/clear", nil)

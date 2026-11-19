@@ -33,14 +33,14 @@ func TestChaosServiceEvaluation(t *testing.T) {
 			Enabled:     true,
 		},
 		{
-			ID:          "2",
-			Service:     "", // Match any service
-			MatchType:   "regex",
-			Pattern:     `(?i)select.*from\s+users`,
-			Action:      "delay",
-			DelayMs:     500,
-			Probability: 1.0,
-			Enabled:     true,
+			ID:             "2",
+			Service:        "", // Match any service
+			MatchType:      "regex",
+			Pattern:        `(?i)select.*from\s+users`,
+			Action:         "delay",
+			DelayRequestMs: 500,
+			Probability:    1.0,
+			Enabled:        true,
 		},
 		{
 			ID:          "3",
@@ -53,14 +53,14 @@ func TestChaosServiceEvaluation(t *testing.T) {
 			Enabled:     false, // Disabled rule
 		},
 		{
-			ID:          "4",
-			Service:     "postgres",
-			MatchType:   "substring",
-			Pattern:     "select 1",
-			Action:      "delay",
-			DelayMs:     100,
-			Probability: 0.0, // 0% probability
-			Enabled:     true,
+			ID:             "4",
+			Service:        "postgres",
+			MatchType:      "substring",
+			Pattern:        "select 1",
+			Action:         "delay",
+			DelayRequestMs: 100,
+			Probability:    0.0, // 0% probability
+			Enabled:        true,
 		},
 		{
 			ID:          "5",
@@ -118,8 +118,8 @@ func TestChaosServiceEvaluation(t *testing.T) {
 	if !matched {
 		t.Error("expected match for regex query")
 	}
-	if rule.Action != "delay" || rule.DelayMs != 500 {
-		t.Errorf("expected delay of 500ms, got %s: %dms", rule.Action, rule.DelayMs)
+	if rule.Action != "delay" || rule.DelayRequestMs != 500 {
+		t.Errorf("expected request delay of 500ms, got %s: %dms", rule.Action, rule.DelayRequestMs)
 	}
 
 	// Test case 4: Disabled rule check

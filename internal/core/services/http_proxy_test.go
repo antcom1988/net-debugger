@@ -90,8 +90,11 @@ func TestHTTPProxyForwardsRequestAndLogsResponse(t *testing.T) {
 	if !strings.Contains(entry.Query, "POST /v1/orders?source=service-a") {
 		t.Errorf("query does not contain request line: %q", entry.Query)
 	}
-	if strings.Contains(entry.Query, "super-secret") || strings.Contains(strings.ToLower(entry.Query), "authorization:") {
-		t.Errorf("query leaked authorization: %q", entry.Query)
+	if !strings.Contains(entry.Query, "\nHeader : Authorization: Bearer super-secret; Content-Type: application/json") {
+		t.Errorf("query header format = %q", entry.Query)
+	}
+	if !strings.Contains(entry.Query, "\nBody : {\"item\":\"coffee\"}") {
+		t.Errorf("query body format = %q", entry.Query)
 	}
 	if !strings.Contains(entry.Response, "HTTP 201") || !strings.Contains(entry.Response, `{"id":"ord-123"}`) {
 		t.Errorf("response = %q", entry.Response)
@@ -126,7 +129,7 @@ func TestHTTPProxyAppliesChaosDelayForNamedAPIConnection(t *testing.T) {
 	chaos := NewChaosService(t.TempDir() + "/chaos.json")
 	if err := chaos.UpdateRules([]domain.ChaosRule{{
 		ID: "delay-api", Service: "orders_api", MatchType: "substring", Pattern: "POST /orders",
-		Action: "delay", DelayMs: 80, Probability: 1, Enabled: true,
+		Action: "delay", DelayRequestMs: 80, Probability: 1, Enabled: true,
 	}}); err != nil {
 		t.Fatalf("UpdateRules: %v", err)
 	}
@@ -149,7 +152,7 @@ func TestHTTPProxyAppliesChaosDelayForNamedAPIConnection(t *testing.T) {
 		t.Fatalf("request elapsed %s, want at least 70ms chaos delay", elapsed)
 	}
 	entries := logger.Entries()
-	if len(entries) != 1 || entries[0].ThirdParty != "orders_api" || !strings.HasPrefix(entries[0].Query, "[CHAOS_DELAY: 80ms] POST /orders") {
+	if len(entries) != 1 || entries[0].ThirdParty != "orders_api" || !strings.HasPrefix(entries[0].Query, "[CHAOS_DELAY_REQUEST: 80ms] POST /orders") {
 		t.Fatalf("unexpected API chaos log entries: %#v", entries)
 	}
 }
@@ -165,7 +168,7 @@ func TestHTTPProxyAppliesChaosDelayToAPIResponse(t *testing.T) {
 	chaos := NewChaosService(t.TempDir() + "/chaos.json")
 	if err := chaos.UpdateRules([]domain.ChaosRule{{
 		ID: "delay-api-response", Service: "orders_api", MatchType: "substring", Pattern: "GET /orders",
-		Action: "delay", DelayMs: 80, DelayTarget: "response", Probability: 1, Enabled: true,
+		Action: "delay", DelayResponseMs: 80, Probability: 1, Enabled: true,
 	}}); err != nil {
 		t.Fatalf("UpdateRules: %v", err)
 	}

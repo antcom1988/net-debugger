@@ -104,7 +104,7 @@ func loadISO8583Definitions(path string) (map[int]ISO8583FieldDefinition, error)
 	return definitions, nil
 }
 
-// Parse buffers client TCP bytes and returns one redacted summary for every
+// Parse buffers client TCP bytes and returns one field-level summary for every
 // complete, structurally valid ISO8583 frame.
 func (p *ISO8583Parser) Parse(data []byte) []string {
 	p.clientPending = append(p.clientPending, data...)
@@ -176,11 +176,7 @@ func (p *ISO8583Parser) parsePayload(payload []byte) (string, bool) {
 			return "", false
 		}
 		offset += consumed
-		if sensitiveISO8583Field(fieldID) {
-			parts = append(parts, fmt.Sprintf("DE%d=<redacted>", fieldID))
-		} else {
-			parts = append(parts, fmt.Sprintf("DE%d=%s", fieldID, value))
-		}
+		parts = append(parts, fmt.Sprintf("DE%d=%s", fieldID, value))
 	}
 	if offset != len(payload) {
 		return "", false
@@ -243,17 +239,6 @@ func isASCIIDigits(value string) bool {
 		}
 	}
 	return true
-}
-
-func sensitiveISO8583Field(fieldID int) bool {
-	if fieldID >= 102 {
-		return true
-	}
-	switch fieldID {
-	case 2, 35, 36, 45, 52, 53:
-		return true
-	}
-	return false
 }
 
 // BuildErrorResponse returns no bytes: ISO8583 error responses require request

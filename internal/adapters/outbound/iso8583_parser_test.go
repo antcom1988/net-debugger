@@ -62,12 +62,12 @@ func TestISO8583ResponseSecondaryBitmap(t *testing.T) {
 	}
 }
 
-func TestISO8583RedactsSensitiveFields(t *testing.T) {
+func TestISO8583LogsAllFields(t *testing.T) {
 	parser, err := NewISO8583Parser()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// DE2, DE35, DE52 and DE102 are present. Their values must never reach logs.
+	// DE2, DE35, DE52 and DE102 must be recorded verbatim for ISO debugging.
 	payload := "0200" + "C000000020001000" + "0000000004000000" +
 		"16" + "4111111111111111" + "37" + "4111111111111111=25122010000012345678" +
 		"1234567890ABCDEF" + "06" + "SECRET"
@@ -75,12 +75,12 @@ func TestISO8583RedactsSensitiveFields(t *testing.T) {
 	if len(logs) != 1 {
 		t.Fatalf("logs = %v, want one summary", logs)
 	}
-	for _, secret := range []string{"4111111111111111", "25122010000012345678", "12345678", "SECRET"} {
-		if strings.Contains(logs[0], secret) {
-			t.Errorf("summary leaked %q: %q", secret, logs[0])
-		}
-	}
-	for _, field := range []string{"DE2=<redacted>", "DE35=<redacted>", "DE52=<redacted>", "DE102=<redacted>"} {
+	for _, field := range []string{
+		"DE2=4111111111111111",
+		"DE35=4111111111111111=25122010000012345678",
+		"DE52=1234567890ABCDEF",
+		"DE102=SECRET",
+	} {
 		if !strings.Contains(logs[0], field) {
 			t.Errorf("summary missing %q: %q", field, logs[0])
 		}
